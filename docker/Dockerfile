@@ -43,6 +43,9 @@ ARG TARGETARCH
 ARG BUILD_JOBS=2
 # Livox-SDK2 版本; --build-arg LIVOX_SDK2_REF=v1.x.x 钉版本
 ARG LIVOX_SDK2_REF=master
+# 可选: rosdep 的 distribution index 镜像 (绕开 raw.githubusercontent 网络问题)
+#   常用清华镜像: https://mirrors.tuna.tsinghua.edu.cn/rosdistro/index-v4.yaml
+ARG ROSDISTRO_INDEX_URL="https://mirrors.tuna.tsinghua.edu.cn/rosdistro/index-v4.yaml"
 
 ENV ROS_WS=/root/ros_ws \
     LIVOX_SDK2_STAGE=/opt/livox_sdk2_stage \
@@ -86,26 +89,62 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGE
 
 # ---------------------------------------------------------------------------
 # 3. rosdep 初始化 (尽早做, 利用层缓存)
+#    - 网络不稳时 raw.githubusercontent 容易 SSL EOF, 加重试 + 镜像支持
 # ---------------------------------------------------------------------------
 RUN rosdep init 2>/dev/null || true && \
-    rosdep update --rosdistro=${ROS_DISTRO}
+    if [ -n "${ROSDISTRO_INDEX_URL}" ]; then \
+        export ROSDISTRO_INDEX_URL="${ROSDISTRO_INDEX_URL}"; \
+        echo "Using rosdistro index: ${ROSDISTRO_INDEX_URL}"; \
+    fi && \
+    n=0; \
+    until [ "$n" -ge 5 ]; do \
+        rosdep update && break; \
+        n=$((n+1)); \
+        echo "==> rosdep update failed (attempt $n/5), retrying in $((n*5))s..."; \
+        sleep $((n*5)); \
+    done; \
+    [ "$n" -lt 5 ] || { echo "ERROR: rosdep update failed after 5 attempts" >&2; exit 1; }
 
 # ---------------------------------------------------------------------------
 # 4. 编译 + 安装 Livox-SDK2 到 staging 目录
 #    - staging 目录 (${LIVOX_SDK2_STAGE}) 用于打包到 deb 暂存树
 #    - 同时把 .so / 头文件拷到 /usr/local 让 driver 的 find_library 命中
+#
+#    分多个 RUN 便于失败定位; "ls staging" 步骤会打印 install 后的实际产物
 # ---------------------------------------------------------------------------
 RUN git clone --depth=1 --branch ${LIVOX_SDK2_REF} \
-        https://github.com/Livox-SDK/Livox-SDK2.git /tmp/Livox-SDK2 && \
-    cmake -S /tmp/Livox-SDK2 -B /tmp/Livox-SDK2/build \
+        https://github.com/Livox-SDK/Livox-SDK2.git /tmp/Livox-SDK2
+
+# Livox-SDK2 在新编译器(>=gcc-13 / Noble)下有 transitive-include 退化问题:
+#   - std::uint8_t / uint16_t 找不到 (新版 libstdc++ 不再隐式引入 <cstdint>)
+#   - vendored spdlog/fmt 触发 -Wc++20-compat 等 noise
+# 用 -include cstdint 全局补上头文件; -w/-Wno-error 把 vendor 代码先编过去.
+RUN cmake -S /tmp/Livox-SDK2 -B /tmp/Livox-SDK2/build \
         -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_CXX_STANDARD=17 \
+        -DCMAKE_CXX_EXTENSIONS=OFF \
+        -DCMAKE_CXX_FLAGS="-include cstdint -include cstring -include cstdlib -w -Wno-error" \
+        -DCMAKE_C_FLAGS="-include stdint.h -w -Wno-error" \
         -DCMAKE_INSTALL_PREFIX=${LIVOX_SDK2_STAGE} && \
     cmake --build /tmp/Livox-SDK2/build -j${BUILD_JOBS} && \
-    cmake --install /tmp/Livox-SDK2/build && \
-    cp -P ${LIVOX_SDK2_STAGE}/lib/liblivox_lidar_sdk_shared.so* /usr/local/lib/ && \
+    cmake --install /tmp/Livox-SDK2/build
+
+RUN echo "==> Livox-SDK2 staging contents:" && \
+    find ${LIVOX_SDK2_STAGE} \( -type f -o -type l \) | sort
+
+# 用 shopt -s nullglob 避免 *.so 没匹配到时 cp 失败时不知所措
+RUN /bin/bash -c 'set -eo pipefail; \
+    shopt -s nullglob; \
+    sdk_libs=( ${LIVOX_SDK2_STAGE}/lib/liblivox_lidar_sdk_shared.so* ); \
+    if [ ${#sdk_libs[@]} -eq 0 ]; then \
+        echo "ERROR: no liblivox_lidar_sdk_shared.so* found under ${LIVOX_SDK2_STAGE}/lib"; \
+        ls -la ${LIVOX_SDK2_STAGE}/lib || true; \
+        exit 1; \
+    fi; \
+    cp -P "${sdk_libs[@]}" /usr/local/lib/ && \
     cp -r ${LIVOX_SDK2_STAGE}/include/. /usr/local/include/ && \
     ldconfig && \
-    rm -rf /tmp/Livox-SDK2
+    rm -rf /tmp/Livox-SDK2'
 
 # ---------------------------------------------------------------------------
 # 5. 拷入源码 + 重现 build.sh ROS2 路径的两个动作:
@@ -131,6 +170,7 @@ RUN cp -f package_ROS2.xml package.xml && \
 #      - dh_usrlocal:       跳过 /usr/local 检查
 # ---------------------------------------------------------------------------
 RUN <<'BASH'
+#!/usr/bin/env bash
 set -eo pipefail
 source /opt/ros/${ROS_DISTRO}/setup.bash
 set -u
@@ -147,6 +187,37 @@ bloom-generate rosdebian \
 
 PKG=$(dpkg-parsechangelog -ldebian/changelog -SSource)
 echo "==> bloom binary package name: ${PKG}"
+
+# 6.0 把 *-dev 从 runtime Depends 中剔除 (留在 Build-Depends).
+#     bloom 把 <depend>apr</depend> 翻译为 libapr1-dev 并塞进 Depends, 但运行时
+#     不需要头文件; dh_shlibdeps 会通过 ${shlibs:Depends} 自动补上真正的 .so 包
+#     (libapr1 / libapr1t64 / libaprutil1 / libaprutil1t64, 依发行版而定).
+python3 - <<'PY'
+import re
+path = "debian/control"
+with open(path) as f:
+    text = f.read()
+
+# 把多行的 Depends: 字段折行后处理, 写回单行 (debian/control 允许)
+def fix(match):
+    body = match.group(1)
+    body = re.sub(r"\n ", " ", body)
+    items = [x.strip() for x in body.split(",") if x.strip()]
+    drop = ("libapr1-dev", "libaprutil1-dev")
+    items = [x for x in items if not any(x == d or x.startswith(d + " ") for d in drop)]
+    return "Depends: " + ", ".join(items) + "\n"
+
+text = re.sub(
+    r"^Depends:[ \t]*((?:[^\n]*(?:\n [^\n]+)*))\n",
+    fix, text, flags=re.MULTILINE,
+)
+with open(path, "w") as f:
+    f.write(text)
+PY
+
+echo '===== debian/control (Depends after fix) ====='
+grep -E '^(Depends|Build-Depends):' debian/control || true
+echo '=============================================='
 
 # 6.1 透传 cmake 参数 (build.sh 的 colcon --cmake-args 等价物)
 sed -i "s|dh_auto_configure --|dh_auto_configure -- -DROS_EDITION=ROS2 -DDISTRO_ROS=${ROS_DISTRO}|" debian/rules
