@@ -108,7 +108,7 @@ class Lddc final {
 
   void InitPointcloud2MsgHeader(PointCloud2& cloud);
   void InitPointcloud2Msg(const StoragePacket& pkg, PointCloud2& cloud, uint64_t& timestamp);
-  void PublishPointcloud2Data(const uint8_t index, uint64_t timestamp, const PointCloud2& cloud);
+  void PublishPointcloud2Data(const uint8_t index, const uint64_t timestamp, const PointCloud2& cloud);
 
   void InitCustomMsg(CustomMsg& livox_msg, const StoragePacket& pkg, uint8_t index);
   void FillPointsToCustomMsg(CustomMsg& livox_msg, const StoragePacket& pkg);
@@ -129,6 +129,7 @@ class Lddc final {
 #endif
 
   PublisherPtr GetCurrentPublisher(uint8_t index);
+  PublisherPtr GetCurrentPc2Publisher(uint8_t index);
   PublisherPtr GetCurrentImuPublisher(uint8_t index);
 
  private:
@@ -145,12 +146,16 @@ class Lddc final {
   bool enable_imu_bag_;
   PublisherPtr private_pub_[kMaxSourceLidar];
   PublisherPtr global_pub_;
+  PublisherPtr pc2_private_pub_[kMaxSourceLidar];  // Dedicated PointCloud2 publishers
+  PublisherPtr pc2_global_pub_;
   PublisherPtr private_imu_pub_[kMaxSourceLidar];
   PublisherPtr global_imu_pub_;
   rosbag::Bag *bag_;
 #elif defined BUILDING_ROS2
   PublisherPtr private_pub_[kMaxSourceLidar];
   PublisherPtr global_pub_;
+  PublisherPtr pc2_private_pub_[kMaxSourceLidar];  // Dedicated PointCloud2 publishers
+  PublisherPtr pc2_global_pub_;
   PublisherPtr private_imu_pub_[kMaxSourceLidar];
   PublisherPtr global_imu_pub_;
 #endif

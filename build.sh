@@ -31,9 +31,9 @@ echo "ROS version is: "$ROS_VERSION
 
 # clear `build/` folder.
 # TODO: Do not clear these folders, if the last build is based on the same ROS version.
-rm -rf ../../build/
-rm -rf ../../devel/
-rm -rf ../../install/
+rm -rf ../../build/livox_ros_driver2
+rm -rf ../../devel/livox_ros_driver2
+rm -rf ../../install/livox_ros_driver2
 # clear src/CMakeLists.txt if it exists.
 if [ -f ../CMakeLists.txt ]; then
     rm -f ../CMakeLists.txt
@@ -62,7 +62,7 @@ if [ $ROS_VERSION = ${VERSION_ROS1} ]; then
     catkin_make -DROS_EDITION=${VERSION_ROS1}
 elif [ $ROS_VERSION = ${VERSION_ROS2} ]; then
     cd ../../
-    colcon build --cmake-args -DROS_EDITION=${VERSION_ROS2} -DDISTRO_ROS=${ROS_DISTRO}
+    colcon build --packages-select livox_ros_driver2 --cmake-args  -DROS_EDITION=${VERSION_ROS2} -DDISTRO_ROS=${ROS_DISTRO}
 fi
 popd > /dev/null
 

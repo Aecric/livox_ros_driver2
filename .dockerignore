@@ -1,0 +1,9 @@
+.git
+.vscode
+.dockerignore
+debs
+*.deb
+launch
+build
+install
+log
