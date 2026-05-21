@@ -120,6 +120,7 @@ RUN git clone --depth=1 --branch ${LIVOX_SDK2_REF} \
 #   - vendored spdlog/fmt 触发 -Wc++20-compat 等 noise
 # 用 -include cstdint 全局补上头文件; -w/-Wno-error 把 vendor 代码先编过去.
 RUN cmake -S /tmp/Livox-SDK2 -B /tmp/Livox-SDK2/build \
+        -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
         -DCMAKE_BUILD_TYPE=Release \
         -DCMAKE_CXX_STANDARD=17 \
         -DCMAKE_CXX_EXTENSIONS=OFF \
