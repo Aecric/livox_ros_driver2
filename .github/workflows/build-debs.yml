@@ -77,16 +77,59 @@ jobs:
     name: ${{ matrix.ros_distro }} / ${{ matrix.arch }}
     needs: prepare
     runs-on: ubuntu-latest
+    timeout-minutes: 360
+    continue-on-error: ${{ matrix.experimental || false }}
     permissions:
       contents: write
     strategy:
       fail-fast: false
       matrix:
-        ros_distro: [humble, jazzy]
-        arch: [amd64, arm64]
+        include:
+          # ---- humble / jammy / Ubuntu 22.04 ----
+          - ros_distro: humble
+            arch: amd64
+            experimental: false
+          - ros_distro: humble
+            arch: arm64
+            experimental: false
+          # ---- jazzy / noble / Ubuntu 24.04 ----
+          - ros_distro: jazzy
+            arch: amd64
+            experimental: false
+          - ros_distro: jazzy
+            arch: arm64
+            experimental: false
+          # ---- lyrical / resolute / Ubuntu 26.04 ----
+          - ros_distro: lyrical
+            arch: amd64
+            experimental: true
+          - ros_distro: lyrical
+            arch: arm64
+            experimental: true
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Free up disk space
+        run: |
+          echo "=== Disk usage BEFORE cleanup ==="
+          df -h /
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/share/boost \
+                      "$AGENT_TOOLSDIRECTORY" /usr/local/lib/android \
+                      /usr/share/swift /opt/hostedtoolcache/CodeQL
+          sudo docker image prune -af || true
+          echo "=== Disk usage AFTER cleanup ==="
+          df -h /
+
+      - name: Set up 18GB swap space
+        run: |
+          sudo swapoff -a
+          sudo rm -f /swapfile /mnt/swapfile
+          sudo fallocate -l 18G /swapfile
+          sudo chmod 600 /swapfile
+          sudo mkswap /swapfile
+          sudo swapon /swapfile
+          free -h
 
       # arm64 走 QEMU 用户态模拟; amd64 原生
       - name: Set up QEMU

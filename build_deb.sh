@@ -2,15 +2,15 @@
 # ============================================================================
 # 用 Docker buildx 把 livox_ros_driver2 打成 .deb
 #
-# 矩阵: {humble, jazzy} × {amd64, arm64}
+# 矩阵: {humble, jazzy, lyrical} × {amd64, arm64}
 #
 # 用法:
 #   ./build_deb.sh                      # 默认: humble + 本机架构
 #   ./build_deb.sh humble arm64         # 指定单个组合
 #   ./build_deb.sh jazzy  amd64
-#   ./build_deb.sh all    amd64         # humble & jazzy, 仅 amd64
+#   ./build_deb.sh all    amd64         # humble, jazzy & lyrical, 仅 amd64
 #   ./build_deb.sh humble all           # humble, amd64 & arm64
-#   ./build_deb.sh all    all           # 全 4 个组合
+#   ./build_deb.sh all    all           # 全 6 个组合
 #
 # 环境变量:
 #   BUILD_JOBS=4         deb 内部 make 并发数 (QEMU 下保守, 默认 2)
@@ -41,8 +41,9 @@ ARCH_ARG="${2:-${HOST_ARCH}}"
 case "${DISTRO_ARG}" in
     humble) DISTROS=(humble) ;;
     jazzy)  DISTROS=(jazzy) ;;
-    all)    DISTROS=(humble jazzy) ;;
-    *) echo "ERROR: 未知 distro '${DISTRO_ARG}', 应为 humble|jazzy|all" >&2; exit 1 ;;
+    lyrical) DISTROS=(lyrical) ;;
+    all)    DISTROS=(humble jazzy lyrical) ;;
+    *) echo "ERROR: 未知 distro '${DISTRO_ARG}', 应为 humble|jazzy|lyrical|all" >&2; exit 1 ;;
 esac
 
 case "${ARCH_ARG}" in

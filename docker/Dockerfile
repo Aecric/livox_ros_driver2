@@ -34,7 +34,7 @@
 #   ros2 launch livox_ros_driver2 msg_MID360_launch.py
 # ============================================================================
 
-# 支持: humble (Ubuntu 22.04 / jammy), jazzy (Ubuntu 24.04 / noble)
+# 支持: humble (Ubuntu 22.04 / jammy), jazzy (Ubuntu 24.04 / noble), lyrical (Ubuntu 26.04 / resolute)
 ARG ROS_DISTRO=humble
 FROM ros:${ROS_DISTRO}-perception AS builder
 
