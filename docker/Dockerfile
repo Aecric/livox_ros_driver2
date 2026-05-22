@@ -15,7 +15,7 @@
 #       -f docker/Dockerfile --target export \
 #       --output type=local,dest=./debs .
 #
-#   # humble + arm64 (x86_64 宿主 + QEMU 用户态模拟)
+#   # humble + arm64 (arm64 宿主原生; x86_64 宿主需要 QEMU/binfmt)
 #   docker run --privileged --rm tonistiigi/binfmt --install arm64
 #   docker buildx build --platform linux/arm64 \
 #       -f docker/Dockerfile --target export \
@@ -43,9 +43,12 @@ ARG TARGETARCH
 ARG BUILD_JOBS=2
 # Livox-SDK2 版本; --build-arg LIVOX_SDK2_REF=v1.x.x 钉版本
 ARG LIVOX_SDK2_REF=master
+# 可选: Ubuntu apt 镜像. 为空时沿用 ROS 基础镜像自带 sources.
+#   例如 amd64: mirrors.ustc.edu.cn/ubuntu, arm64: mirrors.ustc.edu.cn/ubuntu-ports
+ARG APT_MIRROR=""
 # 可选: rosdep 的 distribution index 镜像 (绕开 raw.githubusercontent 网络问题)
 #   常用清华镜像: https://mirrors.tuna.tsinghua.edu.cn/rosdistro/index-v4.yaml
-ARG ROSDISTRO_INDEX_URL="https://mirrors.tuna.tsinghua.edu.cn/rosdistro/index-v4.yaml"
+ARG ROSDISTRO_INDEX_URL=""
 
 ENV ROS_WS=/root/ros_ws \
     LIVOX_SDK2_STAGE=/opt/livox_sdk2_stage \
@@ -53,26 +56,28 @@ ENV ROS_WS=/root/ros_ws \
     LANG=C.UTF-8
 
 # ---------------------------------------------------------------------------
-# 1. apt 镜像源 (USTC; arm64 走 ubuntu-ports)
-#    - 从 /etc/os-release 取 codename, 自动适配 jammy(22.04) / noble(24.04)
-#    - Noble 默认走 deb822 (ubuntu.sources), 改写成 legacy sources.list 之前
-#      先把它禁用, 否则双源会重复抓包
+# 1. 可选 apt 镜像源
+#    - 默认不改 ROS 基础镜像源, 避免新 Ubuntu/ROS 发行版刚发布时镜像站滞后.
+#    - 传 APT_MIRROR 时从 /etc/os-release 取 codename, 自动适配 jammy/noble/resolute.
+#    - 新版 Ubuntu 默认走 deb822 (ubuntu.sources), 改写成 legacy sources.list 前先禁用.
 # ---------------------------------------------------------------------------
 RUN . /etc/os-release && \
-    if [ "$TARGETARCH" = "arm64" ]; then \
-        REPO="mirrors.ustc.edu.cn/ubuntu-ports"; \
-    else \
-        REPO="mirrors.ustc.edu.cn/ubuntu"; \
+    if [ -z "${APT_MIRROR}" ]; then \
+        echo "Using base image apt sources for ${VERSION_CODENAME}/${TARGETARCH}"; \
+        exit 0; \
     fi && \
+    REPO="${APT_MIRROR#http://}" && \
+    REPO="${REPO#https://}" && \
     if [ -f /etc/apt/sources.list.d/ubuntu.sources ]; then \
         mv /etc/apt/sources.list.d/ubuntu.sources /etc/apt/sources.list.d/ubuntu.sources.disabled; \
     fi && \
-    printf "deb https://$REPO/ $VERSION_CODENAME main restricted universe multiverse\n\
-deb-src https://$REPO/ $VERSION_CODENAME main restricted universe multiverse\n\
-deb https://$REPO/ $VERSION_CODENAME-updates main restricted universe multiverse\n\
-deb-src https://$REPO/ $VERSION_CODENAME-updates main restricted universe multiverse\n\
-deb https://$REPO/ $VERSION_CODENAME-security main restricted universe multiverse\n\
-deb-src https://$REPO/ $VERSION_CODENAME-security main restricted universe multiverse\n" > /etc/apt/sources.list
+    printf "deb https://%s/ %s main restricted universe multiverse\n\
+deb https://%s/ %s-updates main restricted universe multiverse\n\
+deb https://%s/ %s-security main restricted universe multiverse\n" \
+        "$REPO" "$VERSION_CODENAME" \
+        "$REPO" "$VERSION_CODENAME" \
+        "$REPO" "$VERSION_CODENAME" > /etc/apt/sources.list && \
+    echo "Using apt mirror https://${REPO}/ for ${VERSION_CODENAME}/${TARGETARCH}"
 
 # ---------------------------------------------------------------------------
 # 2. 构建 + 打包依赖
@@ -95,6 +100,8 @@ RUN rosdep init 2>/dev/null || true && \
     if [ -n "${ROSDISTRO_INDEX_URL}" ]; then \
         export ROSDISTRO_INDEX_URL="${ROSDISTRO_INDEX_URL}"; \
         echo "Using rosdistro index: ${ROSDISTRO_INDEX_URL}"; \
+    else \
+        unset ROSDISTRO_INDEX_URL; \
     fi && \
     n=0; \
     until [ "$n" -ge 5 ]; do \
@@ -173,10 +180,15 @@ RUN cp -f package_ROS2.xml package.xml && \
 RUN <<'BASH'
 #!/usr/bin/env bash
 set -eo pipefail
+if [ -n "${ROSDISTRO_INDEX_URL}" ]; then
+    export ROSDISTRO_INDEX_URL="${ROSDISTRO_INDEX_URL}"
+else
+    unset ROSDISTRO_INDEX_URL
+fi
 source /opt/ros/${ROS_DISTRO}/setup.bash
 set -u
 
-# 从 base 镜像取 ubuntu codename (humble->jammy, jazzy->noble)
+# 从 base 镜像取 ubuntu codename (humble->jammy, jazzy->noble, lyrical->resolute)
 . /etc/os-release
 OS_VERSION="${VERSION_CODENAME}"
 echo "==> os-version=${OS_VERSION}, ros-distro=${ROS_DISTRO}"

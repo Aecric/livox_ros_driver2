@@ -76,7 +76,7 @@ jobs:
   build:
     name: ${{ matrix.ros_distro }} / ${{ matrix.arch }}
     needs: prepare
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 360
     continue-on-error: ${{ matrix.experimental || false }}
     permissions:
@@ -88,23 +88,29 @@ jobs:
           # ---- humble / jammy / Ubuntu 22.04 ----
           - ros_distro: humble
             arch: amd64
+            runner: ubuntu-24.04
             experimental: false
           - ros_distro: humble
             arch: arm64
+            runner: ubuntu-24.04-arm
             experimental: false
           # ---- jazzy / noble / Ubuntu 24.04 ----
           - ros_distro: jazzy
             arch: amd64
+            runner: ubuntu-24.04
             experimental: false
           - ros_distro: jazzy
             arch: arm64
+            runner: ubuntu-24.04-arm
             experimental: false
           # ---- lyrical / resolute / Ubuntu 26.04 ----
           - ros_distro: lyrical
             arch: amd64
+            runner: ubuntu-24.04
             experimental: true
           - ros_distro: lyrical
             arch: arm64
+            runner: ubuntu-24.04-arm
             experimental: true
     steps:
       - name: Checkout
@@ -131,13 +137,6 @@ jobs:
           sudo swapon /swapfile
           free -h
 
-      # arm64 走 QEMU 用户态模拟; amd64 原生
-      - name: Set up QEMU
-        if: matrix.arch == 'arm64'
-        uses: docker/setup-qemu-action@v3
-        with:
-          platforms: arm64
-
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -152,7 +151,7 @@ jobs:
             ROS_DISTRO=${{ matrix.ros_distro }}
             BUILD_JOBS=2
           outputs: type=local,dest=./debs
-          # arm64 在 QEMU 下耗时较长, 走 GHA cache 减重复编译
+          # Per-arch GHA cache keeps native amd64/arm64 builds isolated.
           cache-from: type=gha,scope=${{ matrix.ros_distro }}-${{ matrix.arch }}
           cache-to: type=gha,scope=${{ matrix.ros_distro }}-${{ matrix.arch }},mode=max
 

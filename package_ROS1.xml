@@ -71,8 +71,6 @@
   <exec_depend>pcl_ros</exec_depend>
 
   <depend>sensor_msgs</depend>
-  <depend>git</depend>
-  <depend>apr</depend>
 
   <!-- The export tag contains other, unspecified, tags -->
   <export>

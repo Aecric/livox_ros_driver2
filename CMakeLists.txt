@@ -55,13 +55,6 @@ if(ROS_EDITION STREQUAL "ROS1")
     std_msgs
   )
 
-  find_package(PkgConfig)
-  pkg_check_modules(APR apr-1)
-  if (APR_FOUND)
-    message(${APR_INCLUDE_DIRS})
-    message(${APR_LIBRARIES})
-  endif (APR_FOUND)
-
   ###################################
   ## catkin specific configuration ##
   ###################################
@@ -148,7 +141,6 @@ if(ROS_EDITION STREQUAL "ROS1")
     PUBLIC
     ${catkin_INCLUDE_DIRS}
     ${PCL_INCLUDE_DIRS}
-    ${APR_INCLUDE_DIRS}
     3rdparty
     src
   )
@@ -161,7 +153,6 @@ if(ROS_EDITION STREQUAL "ROS1")
     ${Boost_LIBRARY}
     ${catkin_LIBRARIES}
     ${PCL_LIBRARIES}
-    ${APR_LIBRARIES}
   )
 
 
@@ -228,14 +219,6 @@ else(ROS_EDITION STREQUAL "ROS2")
   find_package(builtin_interfaces REQUIRED)
   find_package(rosidl_default_generators REQUIRED)
 
-  # check apr
-  find_package(PkgConfig)
-  pkg_check_modules(APR apr-1)
-  if (APR_FOUND)
-    message(${APR_INCLUDE_DIRS})
-    message(${APR_LIBRARIES})
-  endif (APR_FOUND)
-
   # generate custom msg headers
   set(LIVOX_INTERFACES livox_interfaces2)
   rosidl_generate_interfaces(${LIVOX_INTERFACES}
@@ -282,7 +265,9 @@ else(ROS_EDITION STREQUAL "ROS2")
   target_include_directories(${PROJECT_NAME} PRIVATE ${livox_sdk_INCLUDE_DIRS})
 
   # get include directories of custom msg headers
-  if(DISTRO_ROS STREQUAL "humble" OR DISTRO_ROS STREQUAL "jazzy")
+  set(LIVOX_INTERFACE_TARGET "")
+  set(LIVOX_INTERFACES_INCLUDE_DIRECTORIES "")
+  if(COMMAND rosidl_get_typesupport_target)
     rosidl_get_typesupport_target(cpp_typesupport_target
     ${LIVOX_INTERFACES} "rosidl_typesupport_cpp")
     target_link_libraries(${PROJECT_NAME} "${cpp_typesupport_target}")
@@ -295,7 +280,6 @@ else(ROS_EDITION STREQUAL "ROS2")
   # include file direcotry
   target_include_directories(${PROJECT_NAME} PUBLIC
     ${PCL_INCLUDE_DIRS}
-    ${APR_INCLUDE_DIRS}
     ${LIVOX_LIDAR_SDK_INCLUDE_DIR}
     ${LIVOX_INTERFACES_INCLUDE_DIRECTORIES}   # for custom msgs
     3rdparty
@@ -309,7 +293,6 @@ else(ROS_EDITION STREQUAL "ROS2")
     ${PPT_LIBRARY}
     ${Boost_LIBRARY}
     ${PCL_LIBRARIES}
-    ${APR_LIBRARIES}
   )
 
   rclcpp_components_register_node(${PROJECT_NAME}

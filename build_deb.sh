@@ -15,6 +15,8 @@
 # 环境变量:
 #   BUILD_JOBS=4         deb 内部 make 并发数 (QEMU 下保守, 默认 2)
 #   LIVOX_SDK2_REF=v1.x  钉 Livox-SDK2 版本 (默认 master)
+#   APT_MIRROR=host      可选 Ubuntu apt 镜像, 例如 mirrors.ustc.edu.cn/ubuntu
+#   ROSDISTRO_INDEX_URL  可选 rosdep rosdistro index 镜像
 #   BUILDER_NAME=name    buildx builder 名 (默认 livox-deb-builder)
 # ============================================================================
 set -euo pipefail
@@ -26,6 +28,8 @@ DOCKERFILE="docker/Dockerfile"
 OUTPUT_DIR="./debs"
 BUILD_JOBS="${BUILD_JOBS:-2}"
 LIVOX_SDK2_REF="${LIVOX_SDK2_REF:-master}"
+APT_MIRROR="${APT_MIRROR:-}"
+ROSDISTRO_INDEX_URL="${ROSDISTRO_INDEX_URL:-}"
 BUILDER_NAME="${BUILDER_NAME:-livox-deb-builder}"
 
 # --- 参数解析 ----------------------------------------------------------------
@@ -101,6 +105,12 @@ docker buildx inspect --bootstrap | grep -E "Name|Driver|Platforms" || true
 echo "==> [3/4] 构建"
 echo "    DISTROS=${DISTROS[*]}, ARCHES=${ARCHES[*]}"
 echo "    BUILD_JOBS=${BUILD_JOBS}, LIVOX_SDK2_REF=${LIVOX_SDK2_REF}"
+if [ -n "${APT_MIRROR}" ]; then
+    echo "    APT_MIRROR=${APT_MIRROR}"
+fi
+if [ -n "${ROSDISTRO_INDEX_URL}" ]; then
+    echo "    ROSDISTRO_INDEX_URL=${ROSDISTRO_INDEX_URL}"
+fi
 echo "    OUTPUT_DIR=${OUTPUT_DIR}"
 mkdir -p "${OUTPUT_DIR}"
 
@@ -119,6 +129,8 @@ for distro in "${DISTROS[@]}"; do
             --build-arg "ROS_DISTRO=${distro}" \
             --build-arg "BUILD_JOBS=${BUILD_JOBS}" \
             --build-arg "LIVOX_SDK2_REF=${LIVOX_SDK2_REF}" \
+            --build-arg "APT_MIRROR=${APT_MIRROR}" \
+            --build-arg "ROSDISTRO_INDEX_URL=${ROSDISTRO_INDEX_URL}" \
             --output "type=local,dest=${OUTPUT_DIR}" \
             --progress plain \
             . ; then
