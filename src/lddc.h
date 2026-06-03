@@ -89,6 +89,14 @@ class Lddc final {
   uint8_t GetTransferFormat(void) { return transfer_format_; }
   uint8_t IsMultiTopic(void) { return use_multi_topic_; }
   void SetRosNode(livox_ros::DriverNode *node) { cur_node_ = node; }
+#ifdef BUILDING_ROS2
+  // Select reliability QoS per topic. false = reliable, true = best_effort.
+  void SetPublisherQos(bool lidar, bool pointcloud, bool imu) {
+    qos_lidar_best_effort_ = lidar;
+    qos_pointcloud_best_effort_ = pointcloud;
+    qos_imu_best_effort_ = imu;
+  }
+#endif
 
   // void SetRosPub(ros::Publisher *pub) { global_pub_ = pub; };  // NOT USED
   void SetPublishFrq(uint32_t frq) { publish_frq_ = frq; }
@@ -125,7 +133,7 @@ class Lddc final {
       uint32_t offset_time, uint32_t point_interval, uint32_t echo_num);
 
 #ifdef BUILDING_ROS2
-  PublisherPtr CreatePublisher(uint8_t msg_type, std::string &topic_name, uint32_t queue_size);
+  PublisherPtr CreatePublisher(uint8_t msg_type, std::string &topic_name, uint32_t queue_size, bool best_effort);
 #endif
 
   PublisherPtr GetCurrentPublisher(uint8_t index);
@@ -135,6 +143,11 @@ class Lddc final {
  private:
   uint8_t transfer_format_;
   uint8_t use_multi_topic_;
+#ifdef BUILDING_ROS2
+  bool qos_lidar_best_effort_ = true;       // /livox/lidar
+  bool qos_pointcloud_best_effort_ = true;  // /livox/pointcloud
+  bool qos_imu_best_effort_ = true;         // /livox/imu
+#endif
   uint8_t data_src_;
   uint8_t output_type_;
   double publish_frq_;

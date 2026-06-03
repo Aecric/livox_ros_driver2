@@ -137,6 +137,9 @@ DriverNode::DriverNode(const rclcpp::NodeOptions & node_options)
   this->declare_parameter("user_config_path", "path_default");
   this->declare_parameter("cmdline_input_bd_code", "000000000000001");
   this->declare_parameter("lvx_file_path", "/home/livox/livox_test.lvx");
+  this->declare_parameter("qos_lidar", "best_effort");
+  this->declare_parameter("qos_pointcloud", "best_effort");
+  this->declare_parameter("qos_imu", "best_effort");
 
   this->get_parameter("xfer_format", xfer_format);
   this->get_parameter("multi_topic", multi_topic);
@@ -144,6 +147,14 @@ DriverNode::DriverNode(const rclcpp::NodeOptions & node_options)
   this->get_parameter("publish_freq", publish_freq);
   this->get_parameter("output_data_type", output_type);
   this->get_parameter("frame_id", frame_id);
+
+  // Per-topic reliability QoS: anything other than "reliable" means best_effort.
+  std::string qos_lidar = "best_effort";
+  std::string qos_pointcloud = "best_effort";
+  std::string qos_imu = "best_effort";
+  this->get_parameter("qos_lidar", qos_lidar);
+  this->get_parameter("qos_pointcloud", qos_pointcloud);
+  this->get_parameter("qos_imu", qos_imu);
 
   if (publish_freq > 100.0) {
     publish_freq = 100.0;
@@ -158,6 +169,9 @@ DriverNode::DriverNode(const rclcpp::NodeOptions & node_options)
   /** Lidar data distribute control and lidar data source set */
   lddc_ptr_ = std::make_unique<Lddc>(xfer_format, multi_topic, data_src, output_type, publish_freq, frame_id);
   lddc_ptr_->SetRosNode(this);
+  lddc_ptr_->SetPublisherQos(qos_lidar != "reliable",
+                             qos_pointcloud != "reliable",
+                             qos_imu != "reliable");
 
   if (data_src == kSourceRawLidar) {
     DRIVER_INFO(*this, "Data Source is raw lidar.");

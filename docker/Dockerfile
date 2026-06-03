@@ -151,7 +151,7 @@ RUN /bin/bash -c 'set -eo pipefail; \
     fi; \
     cp -P "${sdk_libs[@]}" /usr/local/lib/ && \
     cp -r ${LIVOX_SDK2_STAGE}/include/. /usr/local/include/ && \
-    ldconfig && \
+    { ldconfig || echo "WARN: ldconfig failed (QEMU aarch64 emulation segfaults here); continuing, the build links via find_library/-L paths and does not need the ld cache"; } && \
     rm -rf /tmp/Livox-SDK2'
 
 # ---------------------------------------------------------------------------

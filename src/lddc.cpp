@@ -583,15 +583,25 @@ void Lddc::PublishImuData(LidarImuDataQueue& imu_data_queue, const uint8_t index
 
 #ifdef BUILDING_ROS2
 std::shared_ptr<rclcpp::PublisherBase> Lddc::CreatePublisher(uint8_t msg_type,
-    std::string &topic_name, uint32_t queue_size) {
+    std::string &topic_name, uint32_t queue_size, bool best_effort) {
+    // Reliability QoS is selected per topic by the caller (best_effort drops
+    // packets instead of retransmitting, the usual choice for sensor streams).
+    const char *qos_str = best_effort ? "best_effort" : "reliable";
+    auto qos = rclcpp::QoS(rclcpp::KeepLast(queue_size));
+    if (best_effort) {
+      qos.best_effort();
+    } else {
+      qos.reliable();
+    }
+
     if (kPointCloud2Msg == msg_type) {
       DRIVER_INFO(*cur_node_,
-          "%s publish use PointCloud2 format", topic_name.c_str());
-      return cur_node_->create_publisher<PointCloud2>(topic_name, queue_size);
+          "%s publish use PointCloud2 format, qos: %s", topic_name.c_str(), qos_str);
+      return cur_node_->create_publisher<PointCloud2>(topic_name, qos);
     } else if (kLivoxCustomMsg == msg_type) {
       DRIVER_INFO(*cur_node_,
-          "%s publish use livox custom format", topic_name.c_str());
-      return cur_node_->create_publisher<CustomMsg>(topic_name, queue_size);
+          "%s publish use livox custom format, qos: %s", topic_name.c_str(), qos_str);
+      return cur_node_->create_publisher<CustomMsg>(topic_name, qos);
     }
 #if 0
     else if (kPclPxyziMsg == msg_type)  {
@@ -602,9 +612,8 @@ std::shared_ptr<rclcpp::PublisherBase> Lddc::CreatePublisher(uint8_t msg_type,
 #endif
     else if (kLivoxImuMsg == msg_type)  {
       DRIVER_INFO(*cur_node_,
-          "%s publish use imu format", topic_name.c_str());
-      return cur_node_->create_publisher<ImuMsg>(topic_name,
-          queue_size);
+          "%s publish use imu format, qos: %s", topic_name.c_str(), qos_str);
+      return cur_node_->create_publisher<ImuMsg>(topic_name, qos);
     } else {
       PublisherPtr null_publisher(nullptr);
       return null_publisher;
@@ -742,14 +751,14 @@ std::shared_ptr<rclcpp::PublisherBase> Lddc::GetCurrentPublisher(uint8_t handle)
           ReplacePeriodByUnderline(ip_string).c_str());
       std::string topic_name(name_str);
       queue_size = queue_size * 2; // queue size is 64 for only one lidar
-      private_pub_[handle] = CreatePublisher(transfer_format_, topic_name, queue_size);
+      private_pub_[handle] = CreatePublisher(transfer_format_, topic_name, queue_size, qos_lidar_best_effort_);
     }
     return private_pub_[handle];
   } else {
     if (!global_pub_) {
       std::string topic_name("livox/lidar");
       queue_size = queue_size * 8; // shared queue size is 256, for all lidars
-      global_pub_ = CreatePublisher(transfer_format_, topic_name, queue_size);
+      global_pub_ = CreatePublisher(transfer_format_, topic_name, queue_size, qos_lidar_best_effort_);
     }
     return global_pub_;
   }
@@ -767,14 +776,14 @@ std::shared_ptr<rclcpp::PublisherBase> Lddc::GetCurrentPc2Publisher(uint8_t hand
           ReplacePeriodByUnderline(ip_string).c_str());
       std::string topic_name(name_str);
       queue_size = queue_size * 2;
-      pc2_private_pub_[handle] = CreatePublisher(kPointCloud2Msg, topic_name, queue_size);
+      pc2_private_pub_[handle] = CreatePublisher(kPointCloud2Msg, topic_name, queue_size, qos_pointcloud_best_effort_);
     }
     return pc2_private_pub_[handle];
   } else {
     if (!pc2_global_pub_) {
       std::string topic_name("livox/pointcloud");
       queue_size = queue_size * 8;
-      pc2_global_pub_ = CreatePublisher(kPointCloud2Msg, topic_name, queue_size);
+      pc2_global_pub_ = CreatePublisher(kPointCloud2Msg, topic_name, queue_size, qos_pointcloud_best_effort_);
     }
     return pc2_global_pub_;
   }
@@ -792,14 +801,14 @@ std::shared_ptr<rclcpp::PublisherBase> Lddc::GetCurrentImuPublisher(uint8_t hand
       std::string topic_name(name_str);
       queue_size = queue_size * 2; // queue size is 64 for only one lidar
       private_imu_pub_[handle] = CreatePublisher(kLivoxImuMsg, topic_name,
-          queue_size);
+          queue_size, qos_imu_best_effort_);
     }
     return private_imu_pub_[handle];
   } else {
     if (!global_imu_pub_) {
       std::string topic_name("livox/imu");
       queue_size = queue_size * 8; // shared queue size is 256, for all lidars
-      global_imu_pub_ = CreatePublisher(kLivoxImuMsg, topic_name, queue_size);
+      global_imu_pub_ = CreatePublisher(kLivoxImuMsg, topic_name, queue_size, qos_imu_best_effort_);
     }
     return global_imu_pub_;
   }

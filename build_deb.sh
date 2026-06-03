@@ -13,7 +13,7 @@
 #   ./build_deb.sh all    all           # 全 6 个组合
 #
 # 环境变量:
-#   BUILD_JOBS=4         deb 内部 make 并发数 (QEMU 下保守, 默认 2)
+#   BUILD_JOBS=4         deb 内部 make 并发数 (默认 12; QEMU 跨架构内存吃紧时调低, 如 BUILD_JOBS=2)
 #   LIVOX_SDK2_REF=v1.x  钉 Livox-SDK2 版本 (默认 master)
 #   APT_MIRROR=host      可选 Ubuntu apt 镜像, 例如 mirrors.ustc.edu.cn/ubuntu
 #   ROSDISTRO_INDEX_URL  可选 rosdep rosdistro index 镜像
@@ -26,7 +26,7 @@ cd "${SCRIPT_DIR}"
 
 DOCKERFILE="docker/Dockerfile"
 OUTPUT_DIR="./debs"
-BUILD_JOBS="${BUILD_JOBS:-2}"
+BUILD_JOBS="${BUILD_JOBS:-12}"
 LIVOX_SDK2_REF="${LIVOX_SDK2_REF:-master}"
 APT_MIRROR="${APT_MIRROR:-}"
 ROSDISTRO_INDEX_URL="${ROSDISTRO_INDEX_URL:-}"
