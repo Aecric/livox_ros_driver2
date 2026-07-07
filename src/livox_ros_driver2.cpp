@@ -33,6 +33,7 @@
 #include "driver_node.h"
 #include "lddc.h"
 #include "lds_lidar.h"
+#include "comm/rt_scheduling.h"
 
 using namespace livox_ros;
 
@@ -59,6 +60,9 @@ int main(int argc, char **argv) {
   std::string frame_id = "livox_frame";
   bool lidar_bag = true;
   bool imu_bag   = false;
+  bool rt_scheduling = true;
+  int rt_priority = 60;
+  int max_queue_age_ms = 200;
 
   livox_node.GetNode().getParam("xfer_format", xfer_format);
   livox_node.GetNode().getParam("multi_topic", multi_topic);
@@ -68,6 +72,9 @@ int main(int argc, char **argv) {
   livox_node.GetNode().getParam("frame_id", frame_id);
   livox_node.GetNode().getParam("enable_lidar_bag", lidar_bag);
   livox_node.GetNode().getParam("enable_imu_bag", imu_bag);
+  livox_node.GetNode().getParam("rt_scheduling", rt_scheduling);
+  livox_node.GetNode().getParam("rt_priority", rt_priority);
+  livox_node.GetNode().getParam("max_queue_age_ms", max_queue_age_ms);
 
   printf("data source:%u.\n", data_src);
 
@@ -94,6 +101,7 @@ int main(int argc, char **argv) {
     DRIVER_INFO(livox_node, "Config file : %s", user_config_path.c_str());
 
     LdsLidar *read_lidar = LdsLidar::GetInstance(publish_freq);
+    read_lidar->SetDriverRuntimeConfig(rt_scheduling, rt_priority, static_cast<uint32_t>(max_queue_age_ms));
     livox_node.lddc_ptr_->RegisterLds(static_cast<Lds *>(read_lidar));
 
     if ((read_lidar->InitLdsLidar(user_config_path))) {
@@ -107,6 +115,10 @@ int main(int argc, char **argv) {
 
   livox_node.pointclouddata_poll_thread_ = std::make_shared<std::thread>(&DriverNode::PointCloudDataPollThread, &livox_node);
   livox_node.imudata_poll_thread_ = std::make_shared<std::thread>(&DriverNode::ImuDataPollThread, &livox_node);
+  if (rt_scheduling) {
+    ApplyRealtimeScheduling(*livox_node.pointclouddata_poll_thread_, rt_priority, "livox_pointcloud_poll");
+    ApplyRealtimeScheduling(*livox_node.imudata_poll_thread_, rt_priority, "livox_imu_poll");
+  }
   while (ros::ok()) { usleep(10000); }
 
   return 0;
@@ -140,6 +152,15 @@ DriverNode::DriverNode(const rclcpp::NodeOptions & node_options)
   this->declare_parameter("qos_lidar", "best_effort");
   this->declare_parameter("qos_pointcloud", "best_effort");
   this->declare_parameter("qos_imu", "best_effort");
+  // rt_scheduling/rt_priority: promote the packet-processing and poll
+  // threads to SCHED_FIFO so a co-located CFS-starved host (e.g. sharing
+  // CPUs with a SCHED_FIFO downstream consumer) can't stall point cloud
+  // publishing indefinitely. max_queue_age_ms bounds how stale the raw
+  // packet queue may become before the oldest packets are dropped, turning
+  // unbounded latency growth under contention into bounded latency instead.
+  this->declare_parameter("rt_scheduling", true);
+  this->declare_parameter("rt_priority", 60);
+  this->declare_parameter("max_queue_age_ms", 200);
 
   this->get_parameter("xfer_format", xfer_format);
   this->get_parameter("multi_topic", multi_topic);
@@ -155,6 +176,13 @@ DriverNode::DriverNode(const rclcpp::NodeOptions & node_options)
   this->get_parameter("qos_lidar", qos_lidar);
   this->get_parameter("qos_pointcloud", qos_pointcloud);
   this->get_parameter("qos_imu", qos_imu);
+
+  bool rt_scheduling = true;
+  int rt_priority = 60;
+  int max_queue_age_ms = 200;
+  this->get_parameter("rt_scheduling", rt_scheduling);
+  this->get_parameter("rt_priority", rt_priority);
+  this->get_parameter("max_queue_age_ms", max_queue_age_ms);
 
   if (publish_freq > 100.0) {
     publish_freq = 100.0;
@@ -184,6 +212,7 @@ DriverNode::DriverNode(const rclcpp::NodeOptions & node_options)
     this->get_parameter("cmdline_input_bd_code", cmdline_bd_code);
 
     LdsLidar *read_lidar = LdsLidar::GetInstance(publish_freq);
+    read_lidar->SetDriverRuntimeConfig(rt_scheduling, rt_priority, static_cast<uint32_t>(max_queue_age_ms));
     lddc_ptr_->RegisterLds(static_cast<Lds *>(read_lidar));
 
     if ((read_lidar->InitLdsLidar(user_config_path))) {
@@ -197,6 +226,10 @@ DriverNode::DriverNode(const rclcpp::NodeOptions & node_options)
 
   pointclouddata_poll_thread_ = std::make_shared<std::thread>(&DriverNode::PointCloudDataPollThread, this);
   imudata_poll_thread_ = std::make_shared<std::thread>(&DriverNode::ImuDataPollThread, this);
+  if (rt_scheduling) {
+    ApplyRealtimeScheduling(*pointclouddata_poll_thread_, rt_priority, "livox_pointcloud_poll");
+    ApplyRealtimeScheduling(*imudata_poll_thread_, rt_priority, "livox_imu_poll");
+  }
 }
 
 }  // namespace livox_ros

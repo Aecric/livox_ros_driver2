@@ -146,10 +146,15 @@ All internal parameters of Livox_ros_driver2 are in the launch file. Below are d
 | publish_freq | Set the frequency of point cloud publish <br>Floating-point data type, recommended values 5.0, 10.0, 20.0, 50.0, etc. The maximum publish frequency is 100.0 Hz.| 10.0    |
 | multi_topic  | If the LiDAR device has an independent topic to publish pointcloud data<br>0 -- All LiDAR devices use the same topic to publish pointcloud data<br>1 -- Each LiDAR device has its own topic to publish point cloud data | 0       |
 | xfer_format  | Set pointcloud format<br>0 -- Livox pointcloud2(PointXYZRTLT) pointcloud format<br>1 -- Livox customized pointcloud format<br>2 -- Standard pointcloud2 (pcl :: PointXYZI) pointcloud format in the PCL library (just for ROS) | 0       |
+| rt_scheduling | Promote the packet-processing thread and the point cloud/IMU poll threads to `SCHED_FIFO`. Protects publish latency when the driver shares CPUs with another real-time process (e.g. a downstream SLAM/localization stack) that would otherwise starve this driver's plain CFS threads. Requires `CAP_SYS_NICE` or a raised `rtprio` ulimit; if the permission is missing the driver logs one warning per affected thread and falls back to the default scheduler instead of failing to start. | true |
+| rt_priority | `SCHED_FIFO` priority applied to the threads above when `rt_scheduling` is enabled. Keep this below the priority of any more latency-critical consumer sharing the same CPUs. | 60 |
+| max_queue_age_ms | Upper bound, in milliseconds, on how far the raw packet queue may lag behind the newest received packet before the oldest packets are dropped. Bounds publish latency under sustained CPU contention instead of letting it grow unbounded; a drop triggers a rate-limited warning log with the cumulative drop count. | 200 |
 
   **Note :**
 
 Other parameters not mentioned in this table are not suggested to be changed unless fully understood.
+
+**Running alongside another real-time process on the same host:** if a downstream consumer (e.g. a SLAM/localization stack) pins itself to a set of "reserved" CPUs and explicitly excludes this driver's process from eviction (a `protect_processes`-style allow-list), that consumer's `SCHED_FIFO` threads can still starve this driver's threads on the shared cores even though the driver itself is left alone. In that setup, keep `rt_scheduling` enabled here and set `rt_priority` below the consumer's lowest-priority real-time tier so this driver preempts plain `SCHED_OTHER` work but yields to the consumer's own real-time threads -- this is what prevents the point cloud queue from silently falling behind under contention.
 
 &ensp;&ensp;&ensp;&ensp;***Livox_ros_driver2 pointcloud data detailed description :***
 

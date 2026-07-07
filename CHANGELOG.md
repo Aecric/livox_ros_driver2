@@ -1,6 +1,11 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [Unreleased]
+### Added
+- `rt_scheduling` / `rt_priority` parameters: promote the packet-processing and point cloud/IMU poll threads to `SCHED_FIFO`, so a CPU-contended host (e.g. sharing cores with another real-time process) cannot starve the driver indefinitely. Best-effort: falls back to the default scheduler with a warning if the required privilege is missing. Default: enabled, priority 60.
+- `max_queue_age_ms` parameter: bounds how far the raw packet queue may lag behind the newest packet before the oldest packets are dropped, turning unbounded publish-latency growth under CPU contention into a bounded, logged latency clamp. Default: 200ms.
+
 ## [1.2.6]
 ### Added
 - Support Ubuntu 24.04 and ROS2 Jazzy.

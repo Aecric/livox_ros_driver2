@@ -90,6 +90,15 @@ class PubHandler {
   void ClearAllLidarsExtrinsicParams();
   void SetImuDataCallback(ImuDataCallback cb, void* client_data);
 
+  /// Bound how far raw_packet_queue_ may lag behind the newest packet.
+  /// Call before SetPointCloudConfig(); takes effect on the next push.
+  void SetQueueAgeLimit(uint32_t max_age_ms);
+
+  /// Configure SCHED_FIFO promotion for point_process_thread_. Call before
+  /// SetPointCloudConfig() -- the thread is created there and promoted
+  /// immediately after creation using this config.
+  void SetRealtimeScheduling(bool enable, int priority);
+
  private:
   //thread to process raw data
   void RawDataProcess();
@@ -97,6 +106,26 @@ class PubHandler {
   std::shared_ptr<std::thread> point_process_thread_;
   std::mutex packet_mutex_;
   std::condition_variable packet_condition_;
+
+  /// Drop the oldest queued packets (must be called with packet_mutex_ held)
+  /// so the producer-consumer age gap never exceeds max_queue_age_ns_. This
+  /// clamps publish latency to a bounded value instead of letting it grow
+  /// unboundedly whenever RawDataProcess() is starved of CPU time.
+  void EnforceQueueBoundLocked();
+
+  // 200ms default matches roughly two publish frames at 10Hz -- generous
+  // enough to absorb normal jitter, tight enough to keep the "point cloud
+  // is stale" symptom from becoming user-visible in downstream consumers.
+  uint64_t max_queue_age_ns_ = 200ULL * 1000000ULL;
+  // Absolute backstop against queue growth if packet timestamps ever appear
+  // to go backwards (e.g. a PTP resync), where age-based pruning above
+  // can't tell "oldest" from "newest" reliably.
+  static constexpr size_t kMaxQueueHardCapPackets = 8192;
+  uint64_t dropped_packet_count_ = 0;
+  TimePoint last_drop_log_time_{};
+
+  bool rt_scheduling_enabled_ = true;
+  int rt_priority_ = 60;
 
   //publish callback
   void CheckTimer(uint32_t id);

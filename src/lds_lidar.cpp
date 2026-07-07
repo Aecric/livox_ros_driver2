@@ -187,6 +187,12 @@ void LdsLidar::SetLidarPubHandle() {
   pub_handler().SetPointCloudsCallback(LidarCommonCallback::OnLidarPointClounCb, g_lds_ldiar);
   pub_handler().SetImuDataCallback(LidarCommonCallback::LidarImuDataCallback, g_lds_ldiar);
 
+  // Must precede SetPointCloudConfig(): queue bound takes effect on the next
+  // push regardless, but RT scheduling is only applied when the worker
+  // thread is created inside SetPointCloudConfig().
+  pub_handler().SetQueueAgeLimit(max_queue_age_ms_);
+  pub_handler().SetRealtimeScheduling(rt_scheduling_, rt_priority_);
+
   double publish_freq = Lds::GetLdsFrequency();
   pub_handler().SetPointCloudConfig(publish_freq);
 }

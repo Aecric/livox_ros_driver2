@@ -24,6 +24,7 @@
 
 #include "pub_handler.h"
 #include "livox_lidar_api.h"
+#include "rt_scheduling.h"
 #include <cstdlib>
 #include <chrono>
 #include <iostream>
@@ -68,8 +69,62 @@ void PubHandler::SetPointCloudConfig(const double publish_freq) {
   publish_interval_ms_ = publish_interval_ / kRatioOfMsToNs;
   if (!point_process_thread_) {
     point_process_thread_ = std::make_shared<std::thread>(&PubHandler::RawDataProcess, this);
+    if (rt_scheduling_enabled_) {
+      ApplyRealtimeScheduling(*point_process_thread_, rt_priority_, "livox_point_process");
+    }
   }
   return;
+}
+
+void PubHandler::SetQueueAgeLimit(uint32_t max_age_ms) {
+  std::unique_lock<std::mutex> lock(packet_mutex_);
+  max_queue_age_ns_ = static_cast<uint64_t>(max_age_ms) * 1000000ULL;
+}
+
+void PubHandler::SetRealtimeScheduling(bool enable, int priority) {
+  rt_scheduling_enabled_ = enable;
+  rt_priority_ = priority;
+}
+
+void PubHandler::EnforceQueueBoundLocked() {
+  if (raw_packet_queue_.size() < 2) {
+    return;
+  }
+  const uint64_t newest = raw_packet_queue_.back().time_stamp;
+  size_t dropped_this_call = 0;
+  while (!raw_packet_queue_.empty()) {
+    const uint64_t oldest = raw_packet_queue_.front().time_stamp;
+    const bool age_valid = newest >= oldest;
+    if (age_valid) {
+      if ((newest - oldest) <= max_queue_age_ns_) {
+        break;
+      }
+    } else if (raw_packet_queue_.size() <= kMaxQueueHardCapPackets) {
+      // Timestamps went backwards (e.g. PTP resync) -- can't trust the age
+      // gap, fall back to the hard packet-count backstop instead.
+      break;
+    }
+    raw_packet_queue_.pop_front();
+    ++dropped_this_call;
+  }
+  if (dropped_this_call == 0) {
+    return;
+  }
+  dropped_packet_count_ += dropped_this_call;
+  const auto now = std::chrono::high_resolution_clock::now();
+  if (last_drop_log_time_.time_since_epoch().count() == 0 ||
+      now - last_drop_log_time_ >= std::chrono::seconds(5)) {
+    fprintf(stderr,
+            "[livox_ros_driver2] WARNING: raw point packet queue exceeded "
+            "max_queue_age (%lums); dropped %zu oldest packet(s) this "
+            "interval, %lu dropped total. The point cloud publisher thread "
+            "is falling behind (CPU contention?) -- latency was clamped "
+            "instead of growing unbounded.\n",
+            static_cast<unsigned long>(max_queue_age_ns_ / 1000000ULL),
+            dropped_this_call,
+            static_cast<unsigned long>(dropped_packet_count_));
+    last_drop_log_time_ = now;
+  }
 }
 
 void PubHandler::SetImuDataCallback(ImuDataCallback cb, void* client_data) {
@@ -147,6 +202,7 @@ void PubHandler::OnLivoxLidarPointCloudCallback(uint32_t handle, const uint8_t d
   {
     std::unique_lock<std::mutex> lock(self->packet_mutex_);
     self->raw_packet_queue_.push_back(packet);
+    self->EnforceQueueBoundLocked();
   }
     self->packet_condition_.notify_one();
 

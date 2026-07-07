@@ -52,6 +52,15 @@ class LdsLidar final : public Lds {
   bool Start();
 
   int DeInitLdsLidar(void);
+
+  /// Must be called before InitLdsLidar() to take effect -- forwarded to
+  /// PubHandler when SetLidarPubHandle() wires up the point cloud pipeline.
+  void SetDriverRuntimeConfig(bool rt_scheduling, int rt_priority, uint32_t max_queue_age_ms) {
+    rt_scheduling_ = rt_scheduling;
+    rt_priority_ = rt_priority;
+    max_queue_age_ms_ = max_queue_age_ms;
+  }
+
  private:
   LdsLidar(double publish_freq);
   LdsLidar(const LdsLidar &) = delete;
@@ -87,6 +96,10 @@ class LdsLidar final : public Lds {
   uint32_t whitelist_count_;
   volatile bool is_initialized_;
   char broadcast_code_whitelist_[kMaxLidarCount][kBroadcastCodeSize];
+
+  bool rt_scheduling_ = true;
+  int rt_priority_ = 60;
+  uint32_t max_queue_age_ms_ = 200;
 };
 
 }  // namespace livox_ros

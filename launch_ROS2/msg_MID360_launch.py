@@ -13,9 +13,12 @@ output_type   = 0
 frame_id      = 'livox_frame'
 lvx_file_path = '/home/livox/livox_test.lvx'
 cmdline_bd_code = 'livox0000000001'
-qos_lidar      = 'best_effort' # QoS for /livox/lidar      : 'reliable' or 'best_effort'
+qos_lidar      = 'reliable' # QoS for /livox/lidar      : 'reliable' or 'best_effort'
 qos_pointcloud = 'best_effort' # QoS for /livox/pointcloud : 'reliable' or 'best_effort'
-qos_imu        = 'best_effort' # QoS for /livox/imu        : 'reliable' or 'best_effort'
+qos_imu        = 'reliable' # QoS for /livox/imu        : 'reliable' or 'best_effort'
+rt_scheduling  = True  # promote packet-processing/poll threads to SCHED_FIFO
+rt_priority    = 60    # SCHED_FIFO priority when rt_scheduling is enabled
+max_queue_age_ms = 200 # drop oldest raw packets once queue lags this far behind
 
 cur_path = os.path.split(os.path.realpath(__file__))[0] + '/'
 cur_config_path = cur_path + '../config'
@@ -34,7 +37,10 @@ livox_ros2_params = [
     {"cmdline_input_bd_code": cmdline_bd_code},
     {"qos_lidar": qos_lidar},
     {"qos_pointcloud": qos_pointcloud},
-    {"qos_imu": qos_imu}
+    {"qos_imu": qos_imu},
+    {"rt_scheduling": rt_scheduling},
+    {"rt_priority": rt_priority},
+    {"max_queue_age_ms": max_queue_age_ms}
 ]
 
 
